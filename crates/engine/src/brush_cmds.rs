@@ -274,8 +274,23 @@ pub(crate) fn doc_cmyk_space(s: &Session) -> Option<std::sync::Arc<photocraft_co
     photocraft_color::convert::CmykSpace::for_profile(s.active().and_then(|d| d.doc.icc_profile.as_ref()))
 }
 
+/// The warning for a stroke whose dab pitch (`size × spacing`, as the renderer steps) is longer
+/// than its whole path, so only its first dab is painted (#8389). A single click is one dab by
+/// design and gets none.
+fn sparse_dabs_warning(brush: &BrushSettings, pts: &[StrokePoint]) -> Option<String> {
+    let first = pts.first()?;
+    let length: f64 = pts.iter().zip(pts.iter().skip(1)).map(|(a, b)| (b.x - a.x).hypot(b.y - a.y)).sum();
+    let pitch = photocraft_paint::dynamics::DabBuilder::new(brush).step_len(first);
+    (length > 0.0 && pitch > length).then(|| {
+        format!(
+            "dabs are {pitch:.0} px apart (size × spacing), more than the {length:.0} px stroke: only its first dab was painted; lower `spacing` for continuous coverage"
+        )
+    })
+}
+
 /// Stroke with a resolved brush onto the target layer (pixels or mask).
 fn stroke_with(s: &mut Session, cmd: &str, p: &Value, label: &str, brush: BrushSettings, pts: Vec<StrokePoint>, auto_erase: bool) -> Result<Value> {
+    let sparse = sparse_dabs_warning(&brush, &pts);
     let bg = s.tools.background;
     let fg = brush.color;
     let symmetry = s.active().and_then(|st| st.symmetry.clone());
@@ -329,6 +344,9 @@ fn stroke_with(s: &mut Session, cmd: &str, p: &Value, label: &str, brush: BrushS
     let mut r = damage_json(s, dmg);
     if from_live {
         r["fromLive"] = json!(true);
+    }
+    if let Some(w) = sparse {
+        r["warnings"] = json!([w]);
     }
     Ok(r)
 }

@@ -1320,3 +1320,29 @@ fn brush_and_pencil_paint_a_cmyk_pick_with_the_picked_inks() {
         assert!(got.iter().zip(cyan).all(|(a, b)| (a - b).abs() < 0.02), "{cmd}: {got:?}");
     }
 }
+
+/// #8389: a stroke whose dab pitch (`size × spacing`) is longer than its whole path gets only its
+/// first dab. The result says so, naming the pitch, so a caller can lower `spacing` instead of
+/// losing coverage without a word; a covered stroke and a single click carry no warning.
+#[test]
+fn a_stroke_spaced_past_its_length_warns_of_its_single_dab() {
+    let mut s = session(400, 400);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let r = s.execute("paint.stroke", json!({"points": [[200, 40], [200, 360]], "size": 150, "spacing": 5, "color": "#ff0000"})).unwrap();
+    let warnings = r["warnings"].as_array().unwrap_or_else(|| panic!("no warnings in {r}"));
+    assert_eq!(warnings.len(), 1, "{r}");
+    let w = warnings[0].as_str().unwrap();
+    assert!(w.contains("750 px") && w.contains("320 px") && w.contains("spacing"), "{w}");
+    assert_eq!(rgba(&s, 200, 280)[3], 0.0, "only the first dab is painted");
+
+    for (cmd, p) in [
+        ("paint.stroke", json!({"points": [[200, 40], [200, 360]], "size": 150, "spacing": 0.25})),
+        ("paint.stroke", json!({"points": [[100, 100]], "size": 150, "spacing": 5})),
+        ("paint.stroke", json!({"points": [[100, 100], [100, 100]], "size": 150, "spacing": 5})),
+    ] {
+        let r = s.execute(cmd, p.clone()).unwrap();
+        assert!(r.get("warnings").is_none(), "{p}: {r}");
+    }
+    let r = s.execute("paint.pencil", json!({"points": [[20, 20], [60, 20]], "size": 30, "spacing": 5})).unwrap();
+    assert_eq!(r["warnings"].as_array().map(Vec::len), Some(1), "the Pencil strokes the same way: {r}");
+}
