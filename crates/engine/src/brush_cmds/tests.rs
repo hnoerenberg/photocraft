@@ -1348,7 +1348,8 @@ fn a_stroke_spaced_past_its_length_warns_of_its_single_dab() {
 }
 
 /// #8389 review: the pitch is the renderer's. Spacing off steps dabs by the pointer's speed and
-/// Build-up adds them over time, so neither warns; a Brush Pose pressure override sizes the dabs
+/// Build-up adds them over time, so neither warns when the points carry time (without it they are
+/// spaced by distance, and warn as any stroke); a Brush Pose pressure override sizes the dabs
 /// the renderer steps by, so a light pen with a full-pressure pose warns as a full-size tip does.
 #[test]
 fn the_sparse_dab_warning_follows_the_renderers_pitch() {
@@ -1361,6 +1362,13 @@ fn the_sparse_dab_warning_follows_the_renderers_pitch() {
     assert!(warns(&mut s, json!({}), 1.0), "the plain case warns");
     assert!(!warns(&mut s, json!({"spacingEnabled": false}), 1.0), "Spacing off: dabs follow the pointer's speed");
     assert!(!warns(&mut s, json!({"buildUp": true}), 1.0), "Build-up: dabs over time");
+    // Without timestamps both are spaced by distance, so the pitch decides again.
+    let untimed = |s: &mut Session, brush: Value| {
+        let p = json!({"points": [[200, 40], [200, 360]], "size": 150, "spacing": 5, "brush": brush});
+        s.execute("paint.stroke", p).unwrap().get("warnings").is_some()
+    };
+    assert!(untimed(&mut s, json!({"spacingEnabled": false})), "untimed Spacing off: one dab, warned");
+    assert!(untimed(&mut s, json!({"buildUp": true})), "untimed Build-up: one dab, warned");
     let pressure_size = json!({"shapeDynamics": {"enabled": true, "size": {"control": "penPressure"}}});
     assert!(!warns(&mut s, pressure_size.clone(), 0.1), "a light pen sizes the tip down to a short pitch");
     let mut posed = pressure_size;

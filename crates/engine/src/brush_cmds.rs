@@ -278,9 +278,14 @@ pub(crate) fn doc_cmyk_space(s: &Session) -> Option<std::sync::Arc<photocraft_co
 /// than its whole path, so only its first dab is painted (#8389). A single click is one dab by
 /// design and gets none. The pitch is the renderer's: the brush as it renders, Brush Pose applied
 /// to the first point. With Spacing off (dabs follow the pointer's speed) or Build-up (dabs over
-/// time) the dabs are placed by time, not by this pitch, so there is no warning.
+/// time) a segment with a duration gets dabs by time, not by this pitch, so a stroke with any such
+/// segment gets no warning; without timestamps those segments are spaced by distance too.
 fn sparse_dabs_warning(brush: &BrushSettings, pts: &[StrokePoint]) -> Option<String> {
-    if !brush.spacing_enabled || brush.build_up {
+    let timed = pts.iter().zip(pts.iter().skip(1)).any(|(a, b)| {
+        let dt = b.time - a.time;
+        dt > 0.0 && dt.is_finite()
+    });
+    if (!brush.spacing_enabled || brush.build_up) && timed {
         return None;
     }
     let first = pts.first()?;
