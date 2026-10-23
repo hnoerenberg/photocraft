@@ -1346,3 +1346,24 @@ fn a_stroke_spaced_past_its_length_warns_of_its_single_dab() {
     let r = s.execute("paint.pencil", json!({"points": [[20, 20], [60, 20]], "size": 30, "spacing": 5})).unwrap();
     assert_eq!(r["warnings"].as_array().map(Vec::len), Some(1), "the Pencil strokes the same way: {r}");
 }
+
+/// #8389 review: the pitch is the renderer's. Spacing off steps dabs by the pointer's speed and
+/// Build-up adds them over time, so neither warns; a Brush Pose pressure override sizes the dabs
+/// the renderer steps by, so a light pen with a full-pressure pose warns as a full-size tip does.
+#[test]
+fn the_sparse_dab_warning_follows_the_renderers_pitch() {
+    let mut s = session(400, 400);
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let warns = |s: &mut Session, brush: Value, pressure: f64| {
+        let p = json!({"points": [[200, 40, pressure, 0, 0, 0, 0], [200, 360, pressure, 0, 0, 0, 80]], "size": 150, "spacing": 5, "brush": brush});
+        s.execute("paint.stroke", p).unwrap().get("warnings").is_some()
+    };
+    assert!(warns(&mut s, json!({}), 1.0), "the plain case warns");
+    assert!(!warns(&mut s, json!({"spacingEnabled": false}), 1.0), "Spacing off: dabs follow the pointer's speed");
+    assert!(!warns(&mut s, json!({"buildUp": true}), 1.0), "Build-up: dabs over time");
+    let pressure_size = json!({"shapeDynamics": {"enabled": true, "size": {"control": "penPressure"}}});
+    assert!(!warns(&mut s, pressure_size.clone(), 0.1), "a light pen sizes the tip down to a short pitch");
+    let mut posed = pressure_size;
+    posed["pose"] = json!({"enabled": true, "overridePressure": true, "pressure": 1.0});
+    assert!(warns(&mut s, posed, 0.1), "Brush Pose's full pressure steps the renderer by the full pitch");
+}

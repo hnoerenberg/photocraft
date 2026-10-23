@@ -276,11 +276,18 @@ pub(crate) fn doc_cmyk_space(s: &Session) -> Option<std::sync::Arc<photocraft_co
 
 /// The warning for a stroke whose dab pitch (`size × spacing`, as the renderer steps) is longer
 /// than its whole path, so only its first dab is painted (#8389). A single click is one dab by
-/// design and gets none.
+/// design and gets none. The pitch is the renderer's: the brush as it renders, Brush Pose applied
+/// to the first point. With Spacing off (dabs follow the pointer's speed) or Build-up (dabs over
+/// time) the dabs are placed by time, not by this pitch, so there is no warning.
 fn sparse_dabs_warning(brush: &BrushSettings, pts: &[StrokePoint]) -> Option<String> {
+    if !brush.spacing_enabled || brush.build_up {
+        return None;
+    }
     let first = pts.first()?;
     let length: f64 = pts.iter().zip(pts.iter().skip(1)).map(|(a, b)| (b.x - a.x).hypot(b.y - a.y)).sum();
-    let pitch = photocraft_paint::dynamics::DabBuilder::new(brush).step_len(first);
+    let brush = brush.bounded_for_render();
+    let first = photocraft_paint::dynamics::apply_pose(&brush, *first);
+    let pitch = photocraft_paint::dynamics::DabBuilder::new(&brush).step_len(&first);
     (length > 0.0 && pitch > length).then(|| {
         format!(
             "dabs are {pitch:.0} px apart (size × spacing), more than the {length:.0} px stroke: only its first dab was painted; lower `spacing` for continuous coverage"
