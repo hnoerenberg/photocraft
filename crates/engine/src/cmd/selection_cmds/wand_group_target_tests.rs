@@ -147,29 +147,29 @@ fn group_target_refusal_selects_nothing_when_nothing_was_selected() {
     assert!(!s.active().unwrap().history.can_undo(), "with no history step either");
 }
 
-/// *Not measured*: an empty group and a group inside a group. The refusal reads "the target is a
-/// group", and both of these are groups with no pixels of their own, so they are refused like the
-/// measured one; the issue asks whether the reference agrees. Sample All Layers on still reaches
-/// the composite.
+/// *Not measured*: an empty group and a group inside a group. They keep today's behaviour, the
+/// composite, until the reference is measured (#11784).
 #[test]
-fn an_empty_or_nested_group_target_is_refused_too() {
+fn an_empty_or_nested_group_target_keeps_reading_the_composite() {
     let mut doc = ticket_doc(None);
     let empty = doc.insert_above(None, Layer::group("Empty", Vec::new()));
     let mut s = session(doc, Some(empty));
-    assert_eq!(wand(&mut s, CLICK.0, CLICK.1, false).unwrap_err(), REFUSAL, "an empty group is a group");
-    wand(&mut s, CLICK.0, CLICK.1, true).unwrap();
-    assert_eq!(selection_bounds(&s), BLUE_SQUARE, "Sample All Layers still means the composite");
+    wand(&mut s, CLICK.0, CLICK.1, false).unwrap();
+    assert_eq!(selection_bounds(&s), BLUE_SQUARE, "an empty group: the composite, as before");
 
-    let mut nested = ticket_doc(None);
-    let pixels: Vec<Layer> = nested.layers.drain(1..).collect();
-    let inner = Layer::group("Inner", pixels);
-    let outer = Layer::group("Outer", vec![inner]);
-    let id = outer.id;
-    nested.layers.push(outer);
-    let mut s = session(nested, Some(id));
-    assert_eq!(wand(&mut s, CLICK.0, CLICK.1, false).unwrap_err(), REFUSAL, "a group inside a group is a group");
-    wand(&mut s, CLICK.0, CLICK.1, true).unwrap();
-    assert_eq!(selection_bounds(&s), BLUE_SQUARE);
+    // The outer group (a group inside it) and the inner one (inside a group).
+    for target_inner in [false, true] {
+        let mut nested = ticket_doc(None);
+        let pixels: Vec<Layer> = nested.layers.drain(1..).collect();
+        let inner = Layer::group("Inner", pixels);
+        let inner_id = inner.id;
+        let outer = Layer::group("Outer", vec![inner]);
+        let id = if target_inner { inner_id } else { outer.id };
+        nested.layers.push(outer);
+        let mut s = session(nested, Some(id));
+        wand(&mut s, CLICK.0, CLICK.1, false).unwrap();
+        assert_eq!(selection_bounds(&s), BLUE_SQUARE, "nested groups (inner targeted: {target_inner}): the composite, as before");
+    }
 }
 
 // --- Row 2: a layer group with Sample All Layers on: the composite, as today. ----------------

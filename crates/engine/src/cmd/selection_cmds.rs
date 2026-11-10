@@ -142,10 +142,14 @@ pub(crate) fn sample_rgba8(s: &Session, all_layers: bool) -> Result<(Rect, Vec<[
 /// Layers off (#11784). The UI shows it in an error dialog with an OK button.
 pub const WAND_GROUP_TARGET_ERROR: &str = "Could not use the magic wand because the target is a group.";
 
-/// Is the targeted layer a group? A group has no pixels of its own, so the only way the wand can
-/// read it is the composite, which is what Sample All Layers asks for.
+/// Is the targeted layer the group the reference case measured: a group with layers in it, not
+/// inside another group and with no group inside it? An empty group and nested groups were not
+/// measured and keep reading the composite, as before (#11784).
 fn group_target(s: &Session) -> bool {
-    s.active().is_some_and(|d| d.active_layer.and_then(|id| d.doc.layer(id)).is_some_and(|l| l.is_group()))
+    s.active().is_some_and(|d| {
+        let top = d.active_layer.and_then(|id| d.doc.layers.iter().find(|l| l.id == id));
+        top.and_then(|l| l.children()).is_some_and(|c| !c.is_empty() && !c.iter().any(|l| l.is_group()))
+    })
 }
 
 fn magic_wand(s: &mut Session, p: &Value) -> Result<Value> {
@@ -740,7 +744,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.magicWand",
             "Magic Wand",
             [],
-            r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace"} (samples the visible alpha, Quick Mask, or layer mask when that is the picture; a group target with sampleAllLayers false is refused, as the selection and history then stay as they are)"##,
+            r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace"} (samples the visible alpha, Quick Mask, or layer mask when that is the picture; otherwise a group target with sampleAllLayers false is refused, and the selection and history stay as they are)"##,
             has_doc,
             magic_wand
         ),
