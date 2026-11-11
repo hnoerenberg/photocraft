@@ -640,7 +640,6 @@ mod tests {
         doc.walk().iter().map(|(_, _, l)| l.content.kind_name()).collect()
     }
 
-    /// The message of every open error dialog, in the order they were opened.
     /// #11874: the literal translation keys are the engine's alert texts, so an English UI shows
     /// exactly what `image.perspectiveCrop` answers and the catalogs translate the right string.
     #[test]
@@ -652,6 +651,7 @@ mod tests {
         });
     }
 
+    /// The message of every open error dialog, in the order they were opened.
     fn alerts(app: &PhotocraftApp) -> Vec<&str> {
         app.ui.dialogs.iter().filter(|d| d.kind == DialogKind::Error).filter_map(|d| d.fields.get("message").and_then(|m| m.as_str())).collect()
     }
