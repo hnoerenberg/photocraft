@@ -609,7 +609,7 @@ mod tests {
             app.ui.tool = Tool::PerspectiveCrop;
             let st = app.session.active().unwrap();
             let (size, layer_kinds, steps) = (st.doc.size, kinds(&st.doc), st.history.past_len());
-            let ev = |app: &mut PhotocraftApp, e| assert!(pointer(app, e), "{case}");
+            let ev = |app: &mut PhotocraftApp, e| assert!(pointer(app, e, egui::Modifiers::NONE), "{case}");
             // The first press-and-drag: one alert with the reference's text (`DialogKind::Error`
             // shows the message and an OK button), and no box.
             ev(&mut app, ToolEvent::Down { x: 10.0, y: 10.0, pressure: 1.0 });
@@ -668,7 +668,7 @@ mod tests {
         s.add_document(d, None);
         let mut app = PhotocraftApp::new(s, crate::Services::default());
         app.ui.tool = Tool::PerspectiveCrop;
-        let ev = |app: &mut PhotocraftApp, e| assert!(pointer(app, e));
+        let ev = |app: &mut PhotocraftApp, e| assert!(pointer(app, e, egui::Modifiers::NONE));
         ev(&mut app, ToolEvent::Down { x: 20.0, y: 10.0, pressure: 1.0 });
         ev(&mut app, ToolEvent::Move { x: 120.0, y: 90.0, pressure: 1.0 });
         ev(&mut app, ToolEvent::Up { x: 120.0, y: 90.0 });
