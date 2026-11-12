@@ -30,8 +30,9 @@ const CMD: &str = "image.perspectiveCrop";
 const MAX_SIDE: u32 = 300_000;
 /// Corner coordinates beyond this are refused (far past any canvas).
 const MAX_COORD: f64 = 1e7;
-/// The highest resolution (ppi) the crop may set, as for Image Size.
-const MAX_RESOLUTION: f64 = 10_000.0;
+/// The highest resolution (ppi) the crop may set: the Perspective Crop resolution field's limit
+/// (#11977).
+const MAX_RESOLUTION: f64 = 29_999.999;
 
 /// The reference's alert when the document holds a layer the tool can't map (#11799): an alert with
 /// only an OK button on the tool's first press. The UI shows this text through `tl!` (English is
