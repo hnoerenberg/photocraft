@@ -28,7 +28,10 @@ const OTHER: Rect = Rect::new(500, 300, 700, 500);
 
 /// The click inside `Blue`'s square, and the bounds each row of the reference's table measures.
 const CLICK: (i32, i32) = (650, 400);
-const OWN_SQUARE: Rect = Rect::new(499, 299, 701, 501);
+// Bounds each row of the reference's table measures. Since main's MatchRule and seed work the
+// wand reads a targeted layer's exact square without the outer anti-aliased ring, so OWN_SQUARE
+// is the square itself; the composite readings keep their feathered bounds.
+const OWN_SQUARE: Rect = Rect::new(500, 300, 700, 500);
 const BLUE_SQUARE: Rect = Rect::new(599, 349, 701, 451);
 const RED_RECT: Rect = Rect::new(99, 99, 301, 251);
 
