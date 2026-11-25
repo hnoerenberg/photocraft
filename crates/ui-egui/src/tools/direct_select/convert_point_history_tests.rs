@@ -92,7 +92,7 @@ fn other_tools_keep_their_step_names() {
     assert_eq!(added(&mut pen, |a| click(a, [120.0, 40.0], Modifiers::ALT)), convert, "Pen ⌥-click");
     assert_eq!(added(&mut pen, |a| drag(a, [40.0, 120.0], [40.0, 140.0], Modifiers::ALT)), convert, "Pen ⌥-drag");
     pen.ui.tool = Tool::CurvaturePen;
-    assert_eq!(added(&mut pen, |a| testing::double_click(a, [120.0, 120.0], Modifiers::NONE)), convert, "Curvature Pen double-click");
+    assert_eq!(added(&mut pen, |a| testing::double_click(a, [120.0, 120.0], Modifiers::NONE)), ["Toggle Corner Point"], "Curvature Pen double-click");
 }
 
 #[test]

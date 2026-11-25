@@ -153,8 +153,9 @@ pub fn duplicate_subpaths(path: &mut Path, anchors: &[[usize; 2]], d: [f64; 2]) 
 
 /// The Curvature Pen's anchor drag: moves the anchors like [`move_anchors`], then recomputes the
 /// handles of every smooth knot in the subpaths it touched with [`curvature_knots`], so the curve
-/// keeps flowing smoothly through all its anchors, as Photoshop does. Corner knots keep their own
-/// handles (moved with them).
+/// keeps flowing smoothly through all its anchors, as Photoshop does. A corner at an end or on a
+/// closed path keeps its own handles (moved with it); an interior corner of an open path takes the
+/// end handle of the run on each side of it (the cusp of [`curvature_knots`]).
 pub fn move_anchors_curvature(path: &mut Path, anchors: &[[usize; 2]], d: [f64; 2]) -> Result<(), String> {
     move_anchors(path, anchors, d)?;
     let mut subs: Vec<usize> = anchors.iter().map(|a| a[0]).collect();
@@ -166,7 +167,9 @@ pub fn move_anchors_curvature(path: &mut Path, anchors: &[[usize; 2]], d: [f64; 
         let corners: Vec<bool> = sp.knots.iter().map(|k| !k.smooth).collect();
         let fresh = curvature_knots(&pts, &corners, sp.closed);
         for (k, f) in sp.knots.iter_mut().zip(fresh) {
-            if k.smooth {
+            // A corner takes handles only where the solve produced a run end (a row differing
+            // from its anchor); retracted rows keep the corner's own handles, as before.
+            if k.smooth || f[1] != f[0] || f[2] != f[0] {
                 k.in_ctrl = Point::new(f[1][0], f[1][1]);
                 k.out_ctrl = Point::new(f[2][0], f[2][1]);
             }
@@ -176,8 +179,9 @@ pub fn move_anchors_curvature(path: &mut Path, anchors: &[[usize; 2]], d: [f64; 
 }
 
 /// The Curvature Pen's double-click on an anchor: a corner becomes smooth and a smooth knot a
-/// corner (handles retracted), then the subpath reflows as [`move_anchors_curvature`] does, so the
-/// segments around a new smooth point curve through it.
+/// corner, then the subpath reflows as [`move_anchors_curvature`] does: on an open path the curve
+/// splits at a new corner into two runs, each solved as an open Curvature path of its own, the
+/// corner keeping each run's end handle; the segments around a new smooth point curve through it.
 pub fn toggle_curvature_point(path: &mut Path, knot: [usize; 2]) -> Result<(), String> {
     let k = knot_mut(path, knot)?;
     *k = if k.smooth { Knot::corner(k.anchor.x, k.anchor.y) } else { Knot { smooth: true, ..*k } };
@@ -411,8 +415,11 @@ pub fn anchors_in(path: &Path, [x0, y0, x1, y1]: [f64; 4]) -> Vec<[usize; 2]> {
 /// through every anchor, Catmull-Rom style. An inner anchor's handles lie on the line parallel
 /// to its neighbours' chord (so they are collinear), each a third of the distance to the
 /// neighbour on its side long (the chordal scaling that keeps uneven spacing from overshooting).
-/// The ends of an open path aim at their neighbour's nearer handle. `corners[i]` retracts anchor
-/// `i`'s handles (a corner point); a missing entry is smooth. Coincident points give retracted
+/// The ends of an open path aim at their neighbour's nearer handle. `corners[i]` marks a corner
+/// (a missing entry is smooth): on an open path it splits the anchors into runs, each solved as
+/// an open path of its own, and the corner keeps the end handle of the run on each side of it;
+/// a corner at an open end, and a run of two anchors or less, keep retracted handles, and on a
+/// closed path a corner only retracts its handles. Coincident points give retracted
 /// handles, never NaN.
 pub fn curvature_knots(anchors: &[[f64; 2]], corners: &[bool], closed: bool) -> Vec<[[f64; 2]; 3]> {
     let n = anchors.len();
@@ -433,6 +440,37 @@ pub fn curvature_knots(anchors: &[[f64; 2]], corners: &[bool], closed: bool) -> 
         let Some(d) = unit(prev, next).or_else(|| unit(p, next)) else { continue };
         let (li, lo) = (dist(prev, p) / 3.0, dist(p, next) / 3.0);
         knots[i] = [p, [p[0] - d[0] * li, p[1] - d[1] * li], [p[0] + d[0] * lo, p[1] + d[1] * lo]];
+    }
+    if !closed && n >= 3 {
+        // The runs of an open path: each corner is the end anchor of the run on either side and
+        // takes that run's end handle, exactly as the run's anchors solve it on their own; a run
+        // of two anchors or less solves to retracted handles.
+        for i in 1..n - 1 {
+            if !corner(i) {
+                continue;
+            }
+            let (mut l, mut r) = (i, i);
+            while l > 0 && !corner(l - 1) {
+                l -= 1;
+            }
+            while r + 1 < n && !corner(r + 1) {
+                r += 1;
+            }
+            if i - l >= 2 {
+                let (p, nb) = (anchors[i], anchors[i - 1]);
+                if let Some(d) = unit(p, knots[i - 1][2]) {
+                    let len = dist(p, nb) / 3.0;
+                    knots[i][1] = [p[0] + d[0] * len, p[1] + d[1] * len];
+                }
+            }
+            if r - i >= 2 {
+                let (p, nb) = (anchors[i], anchors[i + 1]);
+                if let Some(d) = unit(p, knots[i + 1][1]) {
+                    let len = dist(p, nb) / 3.0;
+                    knots[i][2] = [p[0] + d[0] * len, p[1] + d[1] * len];
+                }
+            }
+        }
     }
     if !closed && n >= 3 {
         for (end, nb, take_in) in [(0, 1, true), (n - 1, n - 2, false)] {
@@ -985,3 +1023,7 @@ mod edit_delete_last_anchor_tests;
 #[cfg(test)]
 #[path = "edit_add_anchor_straight_tests.rs"]
 mod edit_add_anchor_straight_tests;
+
+#[cfg(test)]
+#[path = "curvature_corner_split_tests.rs"]
+mod curvature_corner_split_tests;

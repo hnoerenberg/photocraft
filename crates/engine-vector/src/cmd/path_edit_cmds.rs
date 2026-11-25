@@ -179,8 +179,9 @@ fn bend_segment(s: &mut Session, p: &Value) -> Result<Value> {
 fn convert_point(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "path.convertPoint";
     let k = knot(CMD, p)?;
-    let label = step_name(CMD, p, "Convert Point", &["Change Anchor Point"])?;
-    if p.get("curvature").and_then(Value::as_bool).unwrap_or(false) {
+    let curvature = p.get("curvature").and_then(Value::as_bool).unwrap_or(false);
+    let label = step_name(CMD, p, if curvature { "Toggle Corner Point" } else { "Convert Point" }, &["Change Anchor Point"])?;
+    if curvature {
         return edit_path(s, CMD, p, label, |path| edit::toggle_curvature_point(path, k));
     }
     let out = point(CMD, p, "out")?;
@@ -377,7 +378,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec(
             "path.convertPoint",
             "Convert Point",
-            r#""subpath":i,"knot":j,"out":[x,y]? (none: corner with retracted handles; given: smooth with this out handle and its mirror),"curvature":bool=false (the Curvature Pen's double-click: toggles smooth/corner and reflows the smooth knots of the subpath; out ignored),"stepName":"Change Anchor Point"? (History step name; the Convert Point tool sends it; default "Convert Point"; any other value is refused)"#.into(),
+            r#""subpath":i,"knot":j,"out":[x,y]? (none: corner with retracted handles; given: smooth with this out handle and its mirror),"curvature":bool=false (the Curvature Pen's double-click: toggles smooth/corner; on an open subpath the curve splits at a new corner into runs, each reflowed as an open path of its own; out ignored),"stepName":"Change Anchor Point"? (History step name; the Convert Point tool sends it; default "Convert Point", "Toggle Corner Point" with curvature; any other value is refused)"#.into(),
             convert_point,
         ),
         spec(
@@ -500,6 +501,19 @@ mod tests {
         }
         assert_eq!(s.active().unwrap().history.undo_label(), Some("Drag Anchor Points"));
         assert!(s.execute("path.moveAnchors", json!({"anchors": [[0, 9]], "move": [1, 0], "curvature": true})).is_err());
+    }
+
+    #[test]
+    fn a_curvature_convert_records_toggle_corner_point() {
+        let mut s = session();
+        let path = json!({"subpaths": [{"closed": false, "knots": [[100.0, 300.0], [250.0, 150.0], [400.0, 300.0], [550.0, 150.0], [700.0, 300.0]]}]});
+        s.execute("path.set", json!({"path": path})).unwrap();
+        s.execute("path.convertPoint", json!({"subpath": 0, "knot": 2, "curvature": true})).unwrap();
+        assert_eq!(s.active().unwrap().history.undo_label(), Some("Toggle Corner Point"));
+        s.execute("path.convertPoint", json!({"subpath": 0, "knot": 2, "curvature": true, "stepName": "Change Anchor Point"})).unwrap();
+        assert_eq!(s.active().unwrap().history.undo_label(), Some("Change Anchor Point"));
+        s.execute("path.convertPoint", json!({"subpath": 0, "knot": 1})).unwrap();
+        assert_eq!(s.active().unwrap().history.undo_label(), Some("Convert Point"));
     }
 
     #[test]
