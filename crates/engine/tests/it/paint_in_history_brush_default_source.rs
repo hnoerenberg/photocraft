@@ -75,12 +75,16 @@ fn deleting_the_open_snapshot_leaves_the_default_without_a_source() {
     let e = paint(&mut s, json!({})).unwrap_err().to_string();
     assert!(e.contains("source was deleted"), "{e}");
     assert_eq!(rgba(&s, 3, 3), before, "nothing painted");
-    // Setting a source makes it paint again: a snapshot of the red document.
+    // Setting a source makes it paint again: a snapshot of the red document, taken before the
+    // canvas turns blue so a paint that did nothing cannot pass by leaving the red in place.
     s.execute("edit.fill", json!({"color": "#ff0000"})).unwrap();
+    let red = rgba(&s, 3, 3);
     let snap = s.execute("history.newSnapshot", json!({"name": "Red"})).unwrap()["snapshot"].clone();
+    s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+    assert!(!close(rgba(&s, 3, 3), red), "the canvas holds the blue fill before the click");
     s.execute("history.setSource", json!({"snapshot": snap})).unwrap();
     paint(&mut s, json!({})).unwrap();
-    assert!(rgba(&s, 3, 3)[0] > 0.9, "{:?}", rgba(&s, 3, 3));
+    assert!(close(rgba(&s, 3, 3), red), "the click restored the snapshot's red: {:?}", rgba(&s, 3, 3));
 }
 
 /// With Automatically Create First Snapshot off there is no open snapshot: the default keeps
@@ -149,7 +153,10 @@ fn a_replacement_snapshot_named_after_the_document_leaves_the_brush_without_a_so
     let e = paint(&mut s, json!({})).unwrap_err().to_string();
     assert!(e.contains("source was deleted"), "{e}");
     assert_eq!(rgba(&s, 3, 3), before, "nothing painted");
-    // Picking that snapshot as the source paints again.
+    // Picking that snapshot as the source paints again: turn the canvas blue first, so a paint
+    // that did nothing cannot pass by leaving the red stroke in place.
+    s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+    assert!(!close(rgba(&s, 3, 3), before), "the canvas holds the blue fill before the click");
     s.execute("history.setSource", json!({"snapshot": fresh})).unwrap();
     paint(&mut s, json!({})).unwrap();
     assert!(close(rgba(&s, 3, 3), before), "the picked snapshot holds the red stroke: {:?}", rgba(&s, 3, 3));
