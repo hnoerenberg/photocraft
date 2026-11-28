@@ -64,8 +64,9 @@ pub struct DocState {
     /// the source is a state ([`DocState::source_state_id`]) or the default
     /// ([`crate::history_source_cmds::source`]).
     pub(crate) source_snapshot: Option<u64>,
-    /// The state id chosen as the History Brush's source (`history.setSource {state}`); `None`: no
-    /// state was set, so the default applies (#12845). The history keeps the state it names past its
+    /// The state id chosen as the History Brush's source (`history.setSource {state}`, or the state
+    /// `image.duplicate` starts its copy on, which is not the document as opened); `None`: no state
+    /// was set, so the default applies (#12845). The history keeps the state it names past its
     /// own time; Edit › Purge › Histories clears it along with the states it removed.
     pub(crate) source_state_id: Option<u64>,
     /// The snapshot holding the document as opened (`DocState::new`), `None` when History Options ›
