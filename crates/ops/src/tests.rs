@@ -1215,6 +1215,61 @@ fn an_action_preserves_an_accepted_clear_over_an_empty_capture() {
 }
 
 #[test]
+/// A grouped action may move the source to another row; the fold then releases the state the
+/// previous step kept only as a source, as choosing another source does (#12844 review).
+fn consolidating_a_group_that_moved_the_source_releases_the_kept_state() {
+    let mut h = History::new(50);
+    let mut cur = Arc::new(base());
+    for i in 0..4 {
+        edit(&mut h, &mut cur, &format!("paint {i}"), |d| {
+            d.layers[0].surface_mut().unwrap().write_pixel(1, 1, &[i as f32 / 8.0, 0.0, 0.0, 1.0]);
+        });
+    }
+    cur = h.undo(cur).unwrap().0;
+    let last = h.past_len() + 1;
+    assert!(h.set_brush_source(last), "the later state as the source");
+    let kept = h.row_id(last).unwrap();
+    edit(&mut h, &mut cur, "branch", |d| d.name = "b".into());
+    assert_eq!(h.row_of(kept), Some(h.past_len() + 1), "the step kept the source state");
+    // The group's live history chooses another source; the fold works on the history captured
+    // before the group, which still lists the kept state.
+    let mut later = h.clone();
+    assert!(later.set_brush_source(0));
+    assert_eq!(later.row_of(kept), None, "the live list released the kept state");
+    let mut fold = h.clone();
+    edit(&mut fold, &mut cur, "Action: x", |d| d.name = "action".into());
+    fold.preserve_action_brush_source(&later);
+    assert_eq!(fold.brush_source(), Some(0), "the consolidated source is the group's choice");
+    assert_eq!(fold.row_of(kept), None, "the fold releases the state the moved source left behind");
+    assert_eq!(fold.redo_labels().count(), 0, "no dimmed row is left out of redo");
+    assert!(!fold.can_redo());
+}
+
+#[test]
+/// While a Clear History is undoable the tile counter counts the cleared states; a folded
+/// snapshot source takes its kept row out of that list, and out of the counter too (#12844 review).
+fn a_folded_cleared_source_releases_the_kept_state_from_the_counter() {
+    let mut h = History::new(50);
+    let mut cur = Arc::new(base());
+    for i in 0..4 {
+        edit(&mut h, &mut cur, &format!("paint {i}"), |d| {
+            d.layers[0].surface_mut().unwrap().write_pixel(1, 1, &[i as f32 / 8.0, 0.0, 0.0, 1.0]);
+        });
+    }
+    cur = h.undo(cur).unwrap().0;
+    assert!(h.set_brush_source(h.past_len() + 1), "the later state as the source");
+    edit(&mut h, &mut cur, "branch", |d| d.name = "b".into());
+    assert!(h.clear_states());
+    h.max_bytes = usize::MAX;
+    assert_eq!(h.trim(&cur), 0, "the budget check builds the counter over the cleared states");
+    assert_counter(&h, &cur);
+    h.set_cleared_brush_snapshot(7);
+    assert!(h.is_cleared() && h.past_len() == 0, "the Clear stays");
+    assert_counter(&h, &cur);
+    assert_eq!(h.pixel_bytes(&cur), h.unique_bytes(&cur) + tile_bytes(&cur, &mut HashSet::new()), "the released row counts no longer");
+}
+
+#[test]
 fn cleared_states_still_count_in_the_memory_figures_and_the_budget() {
     let mut h = History::new(50);
     let mut cur = Arc::new(base());

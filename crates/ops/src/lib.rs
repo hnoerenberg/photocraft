@@ -334,9 +334,14 @@ impl History {
         self.brush_source = map(later.brush_source);
         self.brush_source_snapshot = later.brush_source_snapshot;
         // The fold replaces rows, so the state kept as the source is re-derived from the list that
-        // survives it: still kept while it is a held later state under its (possibly mapped) id,
-        // otherwise not (#12844).
+        // survives it: still kept while it is a held later state under its (possibly mapped) id
+        // and still the source. A group that moved the source to another row leaves the old kept
+        // row behind, so the fold releases it through the same path as other source changes
+        // (#12844).
         self.kept_source = map(self.kept_source).filter(|id| self.redo.iter().any(|state| state.id == *id));
+        if self.kept_source.is_some_and(|kept| self.brush_source != Some(kept)) {
+            self.drop_kept_source();
+        }
         if let (Some(dst), Some(src)) = (&mut self.cleared, &later.cleared) {
             dst.brush_source = map(src.brush_source);
             dst.brush_source_snapshot = src.brush_source_snapshot;
@@ -365,8 +370,15 @@ impl History {
         if let Some(cleared) = &mut self.cleared {
             cleared.brush_source = None;
             cleared.brush_source_snapshot = Some(snapshot);
-            // Same rule while the Clear is pending: the state kept as a source goes with it (#12844).
+            // Same rule while the Clear is pending: the state kept as a source goes with it, and
+            // with it its tiles - while the Clear can be undone the counter counts the cleared
+            // states (#12844).
             if let Some(kept) = cleared.kept_source.take() {
+                if let Some(tiles) = &mut self.tiles
+                    && let Some(state) = cleared.redo.iter().find(|state| state.id == kept)
+                {
+                    tiles.remove(&state.doc);
+                }
                 cleared.redo.retain(|state| state.id != kept);
             }
         }
