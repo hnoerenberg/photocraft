@@ -1258,11 +1258,21 @@ fn duplicate(s: &mut Session, p: &Value) -> Result<Value> {
         st.history.set_current_label("Duplicate Image");
         // The copy has never been saved; closing it must ask before discarding its content.
         st.saved_revision = 0;
-        // #12845: the copy starts on its own "Duplicate Image" state, so that state is its History
-        // Brush source: the snapshot the copy was made from is not the document as opened.
-        st.source_state_id = st.history.row_id(0);
     }
     Ok(json!({ "document": index, "name": name }))
+}
+
+/// `image.duplicate` with the History Brush source its copy starts on (#12845). `add_document` took
+/// an open snapshot holding the document the copy was made from, so the open-snapshot default names
+/// that row; the copy's own baseline is the "Duplicate Image" state, so that state is its source.
+/// A wrapper, so the pin stays out of `duplicate`: main's #14680 fix ends that function, and a line
+/// inside it would conflict when main is merged in.
+fn duplicate_with_source(s: &mut Session, p: &Value) -> Result<Value> {
+    let out = duplicate(s, p)?;
+    if let Some(st) = s.active_mut() {
+        st.source_state_id = st.history.row_id(0);
+    }
+    Ok(out)
 }
 
 macro_rules! spec {
@@ -1341,7 +1351,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!("image.mode.bits8", "8 Bits/Channel", ["Image", "Mode"], "{}", has_doc, |s, _| convert_depth(s, SampleType::U8)),
         spec!("image.mode.bits16", "16 Bits/Channel", ["Image", "Mode"], "{}", has_doc, |s, _| convert_depth(s, SampleType::U16)),
         spec!("image.mode.bits32", "32 Bits/Channel", ["Image", "Mode"], "{}", has_doc, |s, _| convert_depth(s, SampleType::F32)),
-        spec!("image.duplicate", "Duplicate…", ["Image"], r##"{"name":str,"mergedOnly":bool=false}"##, has_doc, duplicate),
+        spec!("image.duplicate", "Duplicate…", ["Image"], r##"{"name":str,"mergedOnly":bool=false}"##, has_doc, duplicate_with_source),
     ]
 }
 
