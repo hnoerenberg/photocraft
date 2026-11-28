@@ -959,17 +959,28 @@ fn color_replacement(s: &mut Session, p: &Value) -> Result<Value> {
 /// A `paint.colorReplacement` stroke shown while it is drawn: the same params, and the same
 /// recolouring per dab as the commit, so the preview at the last point is the committed result.
 pub fn live_color_replacement(s: &Session, p: &Value) -> Result<crate::retouch_cmds::LiveDab> {
-    let (stroke, rs, id) = color_replacement_setup(s, p)?;
+    let (mut stroke, rs, id) = color_replacement_setup(s, p)?;
     let cmyk = doc_cmyk_space(s);
     // The same Anti-alias gate as the commit: only the Anti-alias-off branch of the effect reads a
     // footprint's modulation map (#13160), so only that preview pays the second rasterising pass.
     let keep_mods = !rs.anti_alias;
+    // The flag decides how each footprint is rasterised, per dab, so with Anti-alias off the
+    // starting points go in only after it is set: `with_effect` renders the points it is given, as
+    // `live_background_eraser` arranges for its transparency lock.
+    let first = if keep_mods { std::mem::take(&mut stroke.points) } else { Vec::new() };
     // The same CMYK space as the commit, so the preview's dabs recolour the same device colours.
     photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
         let live = crate::retouch_cmds::LiveDab::with_effect(s, "paint.colorReplacement", p, stroke, Some(id), 0, |pre| {
             Box::new(color_replacement_effect(pre.clone(), rs))
         })?;
-        Ok::<_, EngineError>(if keep_mods { live.with_footprint_mods() } else { live })
+        let live = if keep_mods {
+            let mut live = live.with_footprint_mods();
+            live.push(&first)?;
+            live
+        } else {
+            live
+        };
+        Ok::<_, EngineError>(live)
     })?
     .with_tail_preview()
 }

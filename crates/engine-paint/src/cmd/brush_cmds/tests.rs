@@ -332,6 +332,64 @@ fn live_color_replacement_matches_the_commit() {
     }
 }
 
+/// The Anti-alias-off preview modulates its first dabs like the commit: `with_footprint_mods`
+/// decides how a footprint is rasterised, per dab, so the points the live stroke starts with must
+/// not be rendered before it is set. With Wet Edges on a soft tip the commit leaves half strength
+/// inside the tip; the dabs rendered from the starting points keep the dab's strength flat there,
+/// and with a wide spacing no later dab covers them again (#13160).
+#[test]
+fn the_live_anti_alias_off_preview_modulates_its_first_dab_like_the_commit() {
+    let all = [[10.0, 20.0], [30.0, 20.0], [50.0, 20.0], [70.0, 22.0]];
+    let pts = |v: &[[f64; 2]]| v.iter().map(|q| StrokePoint::new(q[0], q[1], 1.0)).collect::<Vec<_>>();
+    let opts = |v: &[[f64; 2]], wet: bool| json!({"points": v, "size": 24, "hardness": 0.0, "tolerance": 60, "mode": "color", "antiAlias": false, "spacing": 1.0, "target": "pixels", "brush": {"wetEdges": wet}});
+    let fresh = |depth: u32| {
+        let mut s = crate::session();
+        s.execute("file.new", json!({"width": 80, "height": 40, "background": "#ff0000", "depth": depth})).unwrap();
+        s.execute("tools.setColors", json!({"foreground": "#00ff00"})).unwrap();
+        s
+    };
+    let shown = |s: &Session| {
+        let st = s.active().unwrap();
+        st.doc.layer(st.active_layer.unwrap()).unwrap().surface().unwrap().clone()
+    };
+    for depth in [8u32, 16u32] {
+        // The setup: this brush and this stroke carry a Wet Edges modulation at all - the same
+        // stroke with Wet Edges off leaves different pixels.
+        let (mut on, mut off) = (fresh(depth), fresh(depth));
+        on.execute("paint.colorReplacement", opts(&all, true)).unwrap();
+        off.execute("paint.colorReplacement", opts(&all, false)).unwrap();
+        let (a, b) = (shown(&on), shown(&off));
+        assert!((0..40).any(|y| (0..80).any(|x| a.rgba(x, y) != b.rgba(x, y))), "{depth}-bit: this stroke carries no Wet Edges modulation to compare");
+        // The live stroke takes the points as the canvas route hands them out and shows the
+        // finishing dabs as well: every pixel of the preview is the pixel the commit paints.
+        let mut s = fresh(depth);
+        let mut live = live_color_replacement(&s, &opts(&all[..2], true)).unwrap();
+        live.push(&pts(&all[2..3])).unwrap();
+        live.push(&pts(&all[3..])).unwrap();
+        let doc = live.doc.clone();
+        s.execute("paint.colorReplacement", opts(&all, true)).unwrap();
+        let id = s.active().unwrap().active_layer.unwrap();
+        let (a, b) = (doc.layer(id).unwrap().surface().unwrap(), shown(&s));
+        let (mut worst, mut at) = (0.0f32, [0, 0]);
+        for y in 0..40 {
+            for x in 0..80 {
+                let (g, w) = (a.rgba(x, y), b.rgba(x, y));
+                let d = (0..4).map(|c| (g[c] - w[c]).abs()).fold(0.0f32, f32::max);
+                if d > worst {
+                    worst = d;
+                    at = [x, y];
+                }
+            }
+        }
+        assert!(
+            worst <= 2.0 / 255.0 + 1e-6,
+            "{depth}-bit: live preview and commit differ by {worst} at {:?} ({:?} vs {:?})",
+            at,
+            a.rgba(at[0], at[1]),
+            b.rgba(at[0], at[1])
+        );
+    }
+}
 /// Color Replacement recolours layer pixels only: a mask, channel or Quick Mask target is
 /// refused (it would otherwise recolour the layer behind the user's back).
 #[test]
